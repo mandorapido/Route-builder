@@ -518,12 +518,15 @@ function extractFromPDF(text){
       if(!tm)continue;
       const type=tm[1]==='\u05e4\u05d9\u05d6\u05d5\u05e8'?'delivery':'pickup';
 
-      // Package count: digit AFTER (*) marker - this is the most reliable source
+      // Package count: digit BEFORE or AFTER (*) marker
       let pkgs=1;
-      const pkgMatch=item.match(/\(\*\)\s*\n?\s*(\d+)|[)][*][(]\s*\n?\s*(\d+)/);
-      if(pkgMatch){
-        const n=parseInt(pkgMatch[1]||pkgMatch[2]);
-        if(n>=1&&n<=20)pkgs=n;
+      // Try after (*) first
+      const pkgAfter=item.match(/[)(][*][)(]\s*\n?\s*(\d+)/);
+      if(pkgAfter){const n=parseInt(pkgAfter[1]);if(n>=1&&n<=20)pkgs=n;}
+      // Try before (*) - digit on its own line right before (*) 
+      if(pkgs===1){
+        const pkgBefore=item.match(/(\d+)\s*\n\s*[)(][*][)(]/);
+        if(pkgBefore){const n=parseInt(pkgBefore[1]);if(n>=1&&n<=20)pkgs=n;}
       }
 
       // bon/goveena
@@ -733,6 +736,19 @@ function exportGPX(){
   const tpts=v.map(s=>'      <trkpt lat="'+s.lat+'" lon="'+s.lon+'"><name>'+xe(s.address)+'</name></trkpt>').join('\n');
   const gpx='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="RouteBuilder" xmlns="http://www.topografix.com/GPX/1/1">\n'+wpts+'\n  <trk><name>\u05de\u05e1\u05dc\u05d5\u05dc</name><trkseg>\n'+tpts+'\n  </trkseg></trk>\n</gpx>';
   dl(gpx,'route.gpx','application/gpx+xml');
+}
+
+function exportCSV(){
+  const v=stops.filter(s=>!s.failed&&s.lat&&s.lon);
+  if(!v.length)return;
+  const hdr='Name,Latitude,Longitude,Address,Notes';
+  const rows=v.map((s,i)=>{
+    const nm='"'+(i+1)+'. '+s.address.replace(/"/g,'""')+'"';
+    const note='"'+(s.type==='delivery'?'\u05e4\u05d9\u05d6\u05d5\u05e8':'\u05d0\u05d9\u05e1\u05d5\u05e3')+' '+s.packages+(s.bon?' '+s.bon:'')+'"';
+    const addr='"'+s.address.replace(/"/g,'""')+'"';
+    return [nm,s.lat.toFixed(6),s.lon.toFixed(6),addr,note].join(',');
+  });
+  dl('\uFEFF'+hdr+'\n'+rows.join('\n'),'route.csv','text/csv;charset=utf-8');
 }
 
 function exportVCF(){
