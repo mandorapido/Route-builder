@@ -78,9 +78,10 @@ input[type=password]{width:100%;background:#111418;border:1px solid #333;border-
     </div>
     <input type="file" id="f-vcf-in" accept=".vcf,text/vcard" style="display:none">
     <input type="file" id="f-gpx-in" accept=".gpx" style="display:none">
-    <button id="vcf-load-btn" onclick="openVCFPicker()" style="width:100%;padding:9px;background:transparent;border:1px solid #444;color:#888;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;letter-spacing:1px">
-      &#128229; &#1492;&#1506;&#1500;&#1492; VCF &#1513;&#1500; &#1488;&#1504;&#1513;&#1497; &#1511;&#1513;&#1512;
+    <button id="vcf-load-btn" onclick="syncContacts()" style="width:100%;padding:11px;background:linear-gradient(135deg,#1a2a1a,#0d1a0d);border:1px solid #27ae60;color:#27ae60;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:1px">
+      &#128241; &#1505;&#1504;&#1499;&#1512;&#1503; &#1488;&#1504;&#1513;&#1497; &#1511;&#1513;&#1512; &#1502;&#1492;&#1496;&#1500;&#1508;&#1493;&#1503;
     </button>
+    <p style="font-size:10px;color:#555;margin-top:4px;text-align:center">&#1488;&#1493; <button onclick="openVCFPicker()" style="background:transparent;border:none;color:#888;cursor:pointer;font-family:inherit;font-size:10px;text-decoration:underline">&#1492;&#1506;&#1500;&#1492; VCF &#1497;&#1491;&#1504;&#1497;&#1514;</button></p>
     <div style="display:flex;gap:8px;margin-top:6px">
       <input id="debug-phone" placeholder="&#1496;&#1500;&#1508;&#1493;&#1503; &#1500;&#1489;&#1491;&#1497;&#1511;&#1492;" style="flex:1;background:#111418;border:1px solid #333;border-radius:6px;color:#e8e2d4;font-family:inherit;font-size:12px;padding:7px 10px;outline:none">
       <button onclick="debugContact()" style="background:transparent;border:1px solid #9b59b6;color:#9b59b6;padding:7px 12px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px">&#128269; &#1489;&#1491;&#1493;&#1511;</button>
@@ -262,6 +263,59 @@ function setMode(m){
 }
 
 function syncContacts(){openVCFPicker();}
+
+async function syncContacts(){
+  const btn=document.getElementById('vcf-load-btn');
+  // Try Contact Picker API (works on HTTPS only)
+  if('contacts' in navigator&&navigator.contacts&&navigator.contacts.select){
+    try{
+      btn.textContent='⏳ בוחר אנשי קשר...';
+      btn.style.color='#ffa000';btn.style.borderColor='#ffa000';
+      const props=['name','tel','address'];
+      const opts={multiple:true};
+      const contacts=await navigator.contacts.select(props,opts);
+      if(!contacts||!contacts.length){
+        btn.textContent='⚠ לא נבחרו';
+        btn.style.color='#888';btn.style.borderColor='#444';
+        return;
+      }
+      const phoneMap=Object.assign({},window.existingContacts||{});
+      for(const c of contacts){
+        const cname=(c.name&&c.name[0])||'';
+        let addr='';
+        if(c.address&&c.address[0]){
+          const a=c.address[0];
+          addr=[a.addressLine,a.city].filter(Boolean).join(' ').trim();
+        }
+        for(const tel of (c.tel||[])){
+          const p=normalizePhone(tel);
+          if(p)phoneMap[p]={phone:p,name:cname,address:addr,note:''};
+        }
+      }
+      existingPhones=new Set(Object.keys(phoneMap));
+      window.existingContacts=phoneMap;
+      try{
+        localStorage.setItem('existing_phones',JSON.stringify([...existingPhones]));
+        const compact={};
+        for(const[k,v]of Object.entries(phoneMap)){
+          if(v.name||v.address)compact[k]={name:v.name||'',address:v.address||'',note:v.note||''};
+        }
+        localStorage.setItem('existing_contacts',JSON.stringify(compact));
+        localStorage.setItem('contacts_v','4');
+      }catch(ex){}
+      btn.textContent='✓ '+existingPhones.size+' נסנכרנו • לחץ לעדכן';
+      btn.style.color='#27ae60';btn.style.borderColor='#27ae60';
+      btn.style.background='linear-gradient(135deg,#1a2a1a,#0d1a0d)';
+      document.getElementById('contacts-count').textContent=existingPhones.size+' נסנכרנו';
+      if(stops.length)renderResults();
+      return;
+    }catch(e){
+      console.log('Contact Picker:',e.message);
+    }
+  }
+  // Fallback to VCF
+  openVCFPicker();
+}
 
 function openVCFPicker(){document.getElementById('f-vcf-in').click();}
 
